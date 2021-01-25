@@ -17,6 +17,7 @@
 import type * as graphqlTypes from 'graphql';
 import * as api from '@opentelemetry/api';
 import { GraphQLObjectType } from 'graphql/type/definition';
+import { PromiseOrValue } from 'graphql/jsutils/PromiseOrValue';
 import {
   AllowedOperationTypes,
   SpanAttributes,
@@ -389,18 +390,31 @@ export function wrapFieldResolver<TSource = any, TContext = any, TArgs = any>(
  * @param onFinish
  * @param preventThrowingError
  */
-async function safeExecuteInTheMiddleAsync<T>(
-  execute: () => T,
+export function safeExecuteInTheMiddleAsync<T>(
+  execute: () => PromiseOrValue<T>,
   onFinish: (e: Error | undefined, result: T | undefined) => void,
   preventThrowingError?: boolean
-): Promise<T> {
+): PromiseOrValue<T> {
   let error: Error | undefined;
-  let result: T | undefined;
+  let result: PromiseOrValue<T> | undefined;
   try {
-    result = await execute();
+    result = execute();
   } catch (e) {
     error = e;
   } finally {
+    if (result instanceof Promise) {
+      // eslint-disable-next-line no-unsafe-finally
+      return result
+        .then(res => {
+          onFinish(error, res);
+          return res;
+        })
+        .catch((error: Error) => {
+          onFinish(error, undefined);
+          throw error;
+        });
+    }
+
     onFinish(error, result);
     if (error && !preventThrowingError) {
       // eslint-disable-next-line no-unsafe-finally

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { context, setSpan } from '@opentelemetry/api';
+import { context, setSpan } from "@opentelemetry/api";
 import {
   isWrapped,
   InstrumentationBase,
@@ -22,11 +22,11 @@ import {
   InstrumentationNodeModuleDefinition,
   InstrumentationNodeModuleFile,
   safeExecuteInTheMiddle,
-} from '@opentelemetry/instrumentation';
-import type * as graphqlTypes from 'graphql';
-import { GraphQLFieldResolver } from 'graphql/type/definition';
-import { SpanAttributes, SpanNames } from './enum';
-import { OTEL_GRAPHQL_DATA_SYMBOL } from './symbols';
+} from "@opentelemetry/instrumentation";
+import type * as graphqlTypes from "graphql";
+import { GraphQLFieldResolver } from "graphql/type/definition";
+import { SpanAttributes, SpanNames } from "./enum";
+import { OTEL_GRAPHQL_DATA_SYMBOL } from "./symbols";
 
 import {
   executeFunctionWithObj,
@@ -40,18 +40,19 @@ import {
   ObjectWithGraphQLData,
   OPERATION_NOT_SUPPORTED,
   Maybe,
-} from './types';
+} from "./types";
 import {
   addSpanSource,
   endSpan,
   getOperation,
   wrapFieldResolver,
   wrapFields,
-} from './utils';
+  safeExecuteInTheMiddleAsync,
+} from "./utils";
 
-import { VERSION } from './version';
-import * as api from '@opentelemetry/api';
-import type { PromiseOrValue } from 'graphql/jsutils/PromiseOrValue';
+import { VERSION } from "./version";
+import * as api from "@opentelemetry/api";
+import type { PromiseOrValue } from "graphql/jsutils/PromiseOrValue";
 
 const DEFAULT_CONFIG: GraphQLInstrumentationConfig = {
   mergeItems: false,
@@ -59,14 +60,14 @@ const DEFAULT_CONFIG: GraphQLInstrumentationConfig = {
   allowValues: false,
 };
 
-const supportedVersions = ['>=14'];
+const supportedVersions = [">=14"];
 
 export class GraphQLInstrumentation extends InstrumentationBase {
   constructor(
     config: GraphQLInstrumentationConfig & InstrumentationConfig = {}
   ) {
     super(
-      '@opentelemetry/instrumentation-graphql',
+      "@opentelemetry/instrumentation-graphql",
       VERSION,
       Object.assign({}, DEFAULT_CONFIG, config)
     );
@@ -82,7 +83,7 @@ export class GraphQLInstrumentation extends InstrumentationBase {
 
   protected init() {
     const module = new InstrumentationNodeModuleDefinition<typeof graphqlTypes>(
-      'graphql',
+      "graphql",
       supportedVersions
     );
     module.files.push(this._addPatchingExecute());
@@ -96,24 +97,24 @@ export class GraphQLInstrumentation extends InstrumentationBase {
     typeof graphqlTypes
   > {
     return new InstrumentationNodeModuleFile<typeof graphqlTypes>(
-      'graphql/execution/execute.js',
+      "graphql/execution/execute.js",
       supportedVersions,
       // cannot make it work with appropriate type as execute function has 2
       //types and/cannot import function but only types
       (moduleExports: any) => {
         if (isWrapped(moduleExports.execute)) {
-          this._unwrap(moduleExports, 'execute');
+          this._unwrap(moduleExports, "execute");
         }
         this._wrap(
           moduleExports,
-          'execute',
+          "execute",
           this._patchExecute(moduleExports.defaultFieldResolver)
         );
         return moduleExports;
       },
-      moduleExports => {
+      (moduleExports) => {
         if (moduleExports) {
-          this._unwrap(moduleExports, 'execute');
+          this._unwrap(moduleExports, "execute");
         }
       }
     );
@@ -123,18 +124,18 @@ export class GraphQLInstrumentation extends InstrumentationBase {
     typeof graphqlTypes
   > {
     return new InstrumentationNodeModuleFile<typeof graphqlTypes>(
-      'graphql/language/parser.js',
+      "graphql/language/parser.js",
       supportedVersions,
-      moduleExports => {
+      (moduleExports) => {
         if (isWrapped(moduleExports.execute)) {
-          this._unwrap(moduleExports, 'parse');
+          this._unwrap(moduleExports, "parse");
         }
-        this._wrap(moduleExports, 'parse', this._patchParse());
+        this._wrap(moduleExports, "parse", this._patchParse());
         return moduleExports;
       },
-      moduleExports => {
+      (moduleExports) => {
         if (moduleExports) {
-          this._unwrap(moduleExports, 'parse');
+          this._unwrap(moduleExports, "parse");
         }
       }
     );
@@ -144,18 +145,18 @@ export class GraphQLInstrumentation extends InstrumentationBase {
     typeof graphqlTypes
   > {
     return new InstrumentationNodeModuleFile<typeof graphqlTypes>(
-      'graphql/validation/validate.js',
+      "graphql/validation/validate.js",
       supportedVersions,
-      moduleExports => {
+      (moduleExports) => {
         if (isWrapped(moduleExports.execute)) {
-          this._unwrap(moduleExports, 'validate');
+          this._unwrap(moduleExports, "validate");
         }
-        this._wrap(moduleExports, 'validate', this._patchValidate());
+        this._wrap(moduleExports, "validate", this._patchValidate());
         return moduleExports;
       },
-      moduleExports => {
+      (moduleExports) => {
         if (moduleExports) {
-          this._unwrap(moduleExports, 'validate');
+          this._unwrap(moduleExports, "validate");
         }
       }
     );
@@ -220,7 +221,7 @@ export class GraphQLInstrumentation extends InstrumentationBase {
         };
 
         return context.with(setSpan(context.active(), span), () => {
-          return safeExecuteInTheMiddle<
+          return safeExecuteInTheMiddleAsync<
             PromiseOrValue<graphqlTypes.ExecutionResult>
           >(
             () => {
@@ -228,7 +229,7 @@ export class GraphQLInstrumentation extends InstrumentationBase {
                 processedArgs,
               ]);
             },
-            err => {
+            (err) => {
               endSpan(span, err);
             }
           );
@@ -358,12 +359,12 @@ export class GraphQLInstrumentation extends InstrumentationBase {
         span.setAttribute(SpanAttributes.OPERATION, name);
       }
     } else {
-      let operationName = ' ';
+      let operationName = " ";
       if (processedArgs.operationName) {
         operationName = ` "${processedArgs.operationName}" `;
       }
       operationName = OPERATION_NOT_SUPPORTED.replace(
-        '$operationName$',
+        "$operationName$",
         operationName
       );
       span.setAttribute(SpanAttributes.OPERATION, operationName);
