@@ -45,6 +45,7 @@ import {
   addSpanSource,
   endSpan,
   getOperation,
+  safeExecuteInTheMiddleAsync,
   wrapFieldResolver,
   wrapFields,
 } from './utils';
@@ -220,9 +221,7 @@ export class GraphQLInstrumentation extends InstrumentationBase {
         };
 
         return context.with(setSpan(context.active(), span), () => {
-          return safeExecuteInTheMiddle<
-            PromiseOrValue<graphqlTypes.ExecutionResult>
-          >(
+          return safeExecuteInTheMiddleAsync<graphqlTypes.ExecutionResult>(
             () => {
               return (original as executeFunctionWithObj).apply(this, [
                 processedArgs,
